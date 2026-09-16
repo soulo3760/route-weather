@@ -1,9 +1,10 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { Search, MapPin, Navigation, CloudRain, Sun, Thermometer, AlertTriangle, ArrowRight, Coffee, Car } from 'lucide-react';
+import { Search, MapPin, Navigation, CloudRain, Sun, Thermometer, AlertTriangle, ArrowRight, Coffee, Car } from 'lucide-//react';
+import { Search as SearchIcon, MapPin as MapPinIcon, Navigation as NavIcon, CloudRain as RainIcon, Sun as SunIcon, Thermometer as TempIcon, AlertTriangle as AlertIcon, ArrowRight as RightIcon, Coffee as CoffeeIcon } from 'lucide-react';
 
 interface WeatherData {
-  location: { name: string; region: string; country: string };
+  location: { name: string | null; region: string; country: string };
   current: {
     temp_c: number;
     condition: { text: string; icon: string };
@@ -12,6 +13,7 @@ interface WeatherData {
     uv: number;
     feelslike_c: number;
   };
+  coord?: { lat: number; lon: number };
 }
 
 export default function RoutePlanner() {
@@ -20,16 +22,6 @@ export default function RoutePlanner() {
   const [routeData, setRouteData] = useState<WeatherData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const fetchWeather = async (query: string | { lat: number; lon: number }) => {
-    const url = typeof query === 'string' 
-      ? `/api/weather?q=${query}` 
-      : `/api/weather?lat=${query.lat}&lon=${query.lon}`;
-    
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Could not fetch weather for ${typeof query === 'string' ? query : 'coordinates'}`);
-    return res.json();
-  };
 
   const handlePlanJourney = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,42 +33,16 @@ export default function RoutePlanner() {
     setLoading(true);
     setError(null);
     try {
-      const startCity = origin.trim();
-      const endCity = destination.trim();
-
-      // 1. Get coordinates for start and end
-      const startRes = await fetch(`/api/weather?q=${startCity}`);
-      if (!startRes.ok) throw new Error(`Could not find ${startCity}`);
-      const startData = await startRes.json();
-
-      const endRes = await fetch(`/api/weather?q=${endCity}`);
-      if (!endRes.ok) throw new Error(`Could not find ${endCity}`);
-      const endData = await endRes.json();
-
-      const startLat = startData.coord.lat;
-      const startLon = startData.coord.lon;
-      const endLat = endData.coord.lat;
-      const endLon = endData.coord.lon;
-
-      // 2. "Smart Sampling": Create 3 waypoints along the route (25%, 50%, 75%)
-      const waypoints: { lat: number; lon: number }[] = [];
-      for (let i = 1; i <= 3; i++) {
-        const ratio = i / 4;
-        waypoints.push({
-          lat: startLat + (endLat - startLat) * ratio,
-          lon: startLon + (endLon - startLon) * ratio,
-        });
+      // Calling the new consolidated Route API
+      const res = await fetch(`/api/route?start=${encodeURIComponent(origin)}&end=${encodeURIComponent(destination)}`);
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to fetch route weather');
       }
-
-      // 3. Fetch weather for all points: [Start, Waypoint1, Waypoint2, Waypoint3, End]
-      const allWeatherRequests = [
-        Promise.resolve(startData),
-        ...waypoints.map(wp => fetchWeather(wp)),
-        Promise.resolve(endData)
-      ];
-
-      const results = await Promise.all(allWeatherRequests);
-      setRouteData(results);
+      
+      const data = await res.json();
+      setRouteData(data);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -110,7 +76,7 @@ export default function RoutePlanner() {
       <div className="max-w-4xl mx-auto">
         <header className="text-center mb-12">
           <h1 className="text-4xl font-black mb-2 tracking-tight">RouteWeather</h1>
-          <p className="text-blue-200/70">Plan your journey with multi-point intelligence</p>
+          <p className="text-blue-200/70">Real-road journey intelligence powered by ORS</p>
         </header>
 
         <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-6 md:p-10 border border-white/20 shadow-2xl">
@@ -118,7 +84,7 @@ export default function RoutePlanner() {
             <div className="space-y-2">
               <label className="text-sm font-medium text-blue-200 ml-1">Starting Point</label>
               <div className="relative">
-                <MapPin className="absolute left-3 top-3 text-blue-300 w-5 h-5" />
+                <MapPinIcon className="absolute left-3 top-3 text-blue-300 w-5 h-5" />
                 <input 
                   type="text"
                   value={origin}
@@ -130,13 +96,13 @@ export default function RoutePlanner() {
             </div>
 
             <div className="hidden md:flex justify-center pb-3">
-              <Navigation className="w-8 h-8 text-blue-400 rotate-45" />
+              <NavIcon className="w-8 h-8 text-blue-400 rotate-45" />
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-blue-200 ml-1">Destination</label>
               <div className="relative">
-                <MapPin className="absolute left-3 top-3 text-red-300 w-5 h-5" />
+                <MapPinIcon className="absolute left-3 top-3 text-red-300 w-5 h-5" />
                 <input 
                   type="text"
                   value={destination}
@@ -153,7 +119,7 @@ export default function RoutePlanner() {
                 disabled={loading}
                 className="px-8 py-4 bg-blue-500 hover:bg-blue-400 rounded-2xl font-bold text-lg transition-all flex items-center gap-2 shadow-lg disabled:opacity-50"
               >
-                {loading ? "Analyzing Route..." : "Plan My Journey"} <ArrowRight className="w-5 h-5" />
+                {loading ? "Calculating Real Route..." : "Plan My Journey"} <RightIcon className="w-5 h-5" />
               </button>
             </div>
           </form>
@@ -166,7 +132,6 @@ export default function RoutePlanner() {
 
           {routeData.length > 0 && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-              {/* JOURNEY TIMELINE */}
               <div className="relative pl-8 space-y-8 border-l-2 border-dashed border-blue-400/50 ml-4">
                 {routeData.map((city, idx) => {
                   const isStart = idx === 0;
@@ -176,18 +141,16 @@ export default function RoutePlanner() {
 
                   return (
                     <div key={city.location.name + idx} className="relative">
-                      {/* The Dot on the Timeline */}
                       <div className={`absolute -left-[25px] top-2 w-4 h-4 rounded-full border-2 border-slate-900 ${isStart ? 'bg-blue-400' : isEnd ? 'bg-red-400' : 'bg-white'}`} />
-
                       <div className={`p-4 rounded-2xl bg-white/5 border ${isStart ? 'border-blue-500/30' : isEnd ? 'border-red-500/30' : 'border-white/10'} backdrop-blur-sm flex justify-between items-center`}>
-                        <div>
+                        <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-bold uppercase tracking-widest opacity-50">
-                              {isStart ? 'Origin' : isEnd ? 'Destination' : 'Waypoint'}
+                              {isStart ? 'Origin' : isEnd ? 'Destination' : `Road Point ${idx}`}
                             </span>
                             {isCoffeePoint && (
                               <span className="flex items-center gap-1 text-xs bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full font-bold">
-                                <Coffee className="w-3 h-3" /> Recommended Rest Point
+                                <CoffeeIcon className="w-3 h-3" /> Recommended Rest Point
                               </span>
                             )}
                           </div>
@@ -203,10 +166,9 @@ export default function RoutePlanner() {
                 })}
               </div>
 
-              {/* Journey Advice */}
               <div className="bg-blue-500/20 border border-blue-400/30 p-6 rounded-3xl flex items-start gap-4">
                 <div className="p-3 bg-blue-500 rounded-2xl">
-                  <AlertTriangle className="w-6 h-6 text-white" />
+                  <AlertIcon className="w-6 h-6 text-white" />
                 </div>
                 <div>
                   <h3 className="text-xl font-bold mb-1">Journey Advice</h3>

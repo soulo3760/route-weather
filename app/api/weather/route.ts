@@ -34,9 +34,13 @@ export async function GET(request: NextRequest) {
 
     const transformedData = {
       location: {
-        name: data.name || 'Midpoint Station',
+        name: data.name || 'Waypoint',
         region: data.sys?.country || 'Unknown',
         country: data.sys?.country || 'Unknown',
+      },
+      coord: {
+        lat: data.coord.lat,
+        lon: data.coord.lon,
       },
       current: {
         temp_c: data.main.temp,
@@ -60,6 +64,7 @@ export async function GET(request: NextRequest) {
 function getMockWeatherData(city: string) {
   return {
     location: { name: city, region: 'Mock Region', country: 'Mock Country' },
+    coord: { lat: 0, lon: 0 },
     current: { 
       temp_c: 25, 
       condition: { text: 'Partly Cloudy', icon: '02d' }, 
