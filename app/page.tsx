@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { Search, MapPin, Navigation, CloudRain, Sun, Thermometer, AlertTriangle, ArrowRight } from 'lucide-react';
+import { Search, MapPin, Navigation, CloudRain, Sun, Thermometer, AlertTriangle, ArrowRight, Coffee, Car } from 'lucide-react';
 
 interface WeatherData {
   location: { name: string; region: string; country: string };
@@ -14,11 +14,19 @@ interface WeatherData {
   };
 }
 
+// Simulated Route Database for free route lookup
+const ROUTE_DATABASE: Record<string, string[]> = {
+  "nakuru-mombasa": ["Naivasha", "Nairobi", "Voi"],
+  "nairobi-mombasa": ["Mtito Andei", "Voi"],
+  "eldoret-nairobi": ["Nakuru", "Naivasha"],
+  "kisumu-nairobi": ["Nakuru", "Naivasha"],
+  "nakuru-nairobi": ["Naivasha"],
+};
+
 export default function RoutePlanner() {
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
-  const [originData, setOriginData] = useState<WeatherData | null>(null);
-  const [destData, setDestData] = useState<WeatherData | null>(null);
+  const [routeData, setRouteData] = useState<WeatherData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,12 +46,22 @@ export default function RoutePlanner() {
     setLoading(true);
     setError(null);
     try {
-      const [start, end] = await Promise.all([
-        fetchWeather(origin),
-        fetchWeather(destination)
-      ]);
-      setOriginData(start);
-      setDestData(end);
+      const startCity = origin.trim();
+      const endCity = destination.trim();
+      
+      // 1. Determine waypoints from our free database
+      const routeKey = `${startCity.toLowerCase()}-${endCity.toLowerCase()}`;
+      const waypoints = ROUTE_DATABASE[routeKey] || [];
+      
+      // 2. Create a full list of cities to fetch: [Start, ...Midpoints, End]
+      const allCities = [startCity, ...waypoints, endCity];
+      
+      // 3. Fetch weather for all cities in parallel
+      const results = await Promise.all(
+        allCities.map(city => fetchWeather(city))
+      );
+      
+      setRouteData(results);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -52,18 +70,22 @@ export default function RoutePlanner() {
   };
 
   const getJourneyAdvice = () => {
-    if (!originData || !destData) return null;
+    if (routeData.length < 2) return null;
     
-    const tempDiff = destData.current.temp_c - originData.current.temp_c;
-    const isRainy = originData.current.condition.text.toLowerCase().includes('rain') || 
-                    destData.current.condition.text.toLowerCase().includes('rain');
+    const start = routeData[0];
+    const end = routeData[routeData.length - 1];
+    const tempDiff = end.current.temp_c - start.current.temp_c;
+    
+    const isRainy = routeData.some(city => 
+      city.current.condition.text.toLowerCase().includes('rain')
+    );
 
     let advice = "";
-    if (tempDiff > 5) advice = "It's significantly warmer at your destination. Pack light!";
-    else if (tempDiff < -5) advice = "It's much colder at your destination. Bring a heavy jacket!";
-    else advice = "The temperature is stable across your route.";
+    if (tempDiff > 5) advice = "Temperature rises as you travel. Pack light!";
+    else if (tempDiff < -5) advice = "It gets colder along the route. Bring a jacket!";
+    else advice = "Stable temperature across your journey.";
 
-    if (isRainy) advice += " ⚠️ Also, rain is expected on this route, so bring an umbrella!";
+    if (isRainy) advice += " ⚠️ Rain expected on this route, bring an umbrella!";
 
     return advice;
   };
@@ -73,7 +95,7 @@ export default function RoutePlanner() {
       <div className="max-w-4xl mx-auto">
         <header className="text-center mb-12">
           <h1 className="text-4xl font-black mb-2 tracking-tight">RouteWeather</h1>
-          <p className="text-blue-200/70">Plan your journey with weather intelligence</p>
+          <p className="text-blue-200/70">Plan your journey with waypoint intelligence</p>
         </header>
 
         <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-6 md:p-10 border border-white/20 shadow-2xl">
@@ -127,12 +149,43 @@ export default function RoutePlanner() {
             </div>
           )}
 
-          {originData && destData && (
+          {routeData.length > 0 && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-              {/* Route Comparison */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <RouteCard city={originData} label="Origin" color="blue" />
-                <RouteCard city={destData} label="Destination" color="red" />
+              {/* JOURNEY TIMELINE */}
+              <div className="relative pl-8 space-y-8 border-l-2 border-dashed border-blue-400/50 ml-4">
+                {routeData.map((city, idx) => {
+                  const isStart = idx === 0;
+                  const isEnd = idx === routeData.length - 1;
+                  const isMid = !isStart && !isEnd;
+                  const isCoffeePoint = isMid && idx === Math.floor(routeData.length / 2);
+
+                  return (
+                    <div key={city.location.name} className="relative">
+                      {/* The Dot on the Timeline */}
+                      <div className={`absolute -left-[25px] top-2 w-4 h-4 rounded-full border-2 border-slate-900 ${isStart ? 'bg-blue-400' : isEnd ? 'bg-red-400' : 'bg-white'}`} />
+                      
+                      <div className={`p-4 rounded-2xl bg-white/5 border ${isStart ? 'border-blue-500/30' : isEnd ? 'border-red-500/30' : 'border-white/10'} backdrop-blur-sm flex justify-between items-center`}>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold uppercase tracking-widest opacity-50">
+                              {isStart ? 'Origin' : isEnd ? 'Destination' : 'Waypoint'}
+                            </span>
+                            {isCoffeePoint && (
+                              <span className="flex items-center gap-1 text-xs bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full font-bold">
+                                <Coffee className="w-3 h-3" /> Recommended Rest Point
+                              </span>
+                            )}
+                          </div>
+                          <h4 className="text-xl font-bold">{city.location.name}</h4>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-2xl font-black">{Math.round(city.current.temp_c)}°C</span>
+                          <p className="text-xs opacity-60">{city.current.condition.text}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Journey Advice */}
@@ -151,29 +204,4 @@ export default function RoutePlanner() {
       </div>
     </div>
   );
-}
-
-function RouteCard({ city, WeatherData, label, color }: { city: WeatherData; label: string; color: 'blue' | 'red' }) {
-  const colorClass = color === 'blue' ? 'text-blue-300' : 'text-red-300';
-  const borderClass = color === 'blue' ? 'border-blue-500/30' : 'border-red-500/30';
-
-  return (
-    <div className={`p-6 rounded-3xl bg-white/5 border ${borderClass} backdrop-blur-sm`}>
-      <div className="flex justify-between items-center mb-4">
-        <span className={`text-xs font-bold uppercase tracking-widest ${colorClass}`}>{label}</span>
-        <span className="text-2xl font-black">{Math.round(city.current.temp_c)}°C</span>
-      </div>
-      <h4 className="text-3xl font-bold mb-1">{city.location.name}</h4>
-      <p className="text-white/60 mb-4">{city.location.country}</p>
-      <div className="flex items-center gap-2 text-white/80">
-        <CloudRain className="w-5 h-5" />
-        <span>{city.current.condition.text}</span>
-      </div>
-    </div>
-  );
-}
-
-function formatDate(dateStr: string) {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
