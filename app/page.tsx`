@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { Search, MapPin, Navigation, CloudRain, Sun, Thermometer, AlertTriangle, ArrowRight, Coffee, Car, X, Wind, Droplets } from 'lucide-react';
+import { Search, MapPin, Navigation, CloudRain, Sun, Thermometer, AlertTriangle, ArrowRight, Coffee, Car, X } from 'lucide-react';
 
 interface WeatherData {
   location: { name: string | null; region: string; country: string };
@@ -71,53 +71,7 @@ export default function RoutePlanner() {
           <p className="text-blue-200/70">Plan your journey with precise waypoint intelligence</p>
         </header>
 
-        <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-6 md:p-10 border border-white/20 shadow-2xl relative">
-          {/* MODAL OVERLAY */}
-          {selectedCity && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm rounded-3xl">
-              <div className="bg-slate-800 border border-white/20 p-8 rounded-3xl shadow-2xl max-w-sm w-full relative animate-in zoom-in-95 duration-200">
-                <button 
-                  onClick={() => setSelectedCity(null)} 
-                  className="absolute top-4 right-4 p-1 rounded-full hover:bg-white/10 transition-colors"
-                >
-                  <X className="w-5 h-5 text-white/60" />
-                </button>
-                
-                <div className="text-center mb-6">
-                  <h3 className="text-2xl font-bold mb-1">{selectedCity.location.name || 'Waypoint'}</h3>
-                  <p className="text-white/60 text-sm">{selectedCity.location.region}, {selectedCity.location.country}</p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white/5 p-4 rounded-2xl border border-white/10 flex flex-col items-center text-center">
-                    <Thermometer className="w-5 h-5 text-blue-400 mb-2" />
-                    <span className="text-xs text-white/50 uppercase">Feels Like</span>
-                    <span className="text-lg font-bold">{Math.round(selectedCity.current.feelslike_c)}°C</span>
-                  </div>
-                  <div className="bg-white/5 p-4 rounded-2xl border border-white/10 flex flex-col items-center text-center">
-                    <Droplets className="w-5 h-5 text-blue-400 mb-2" />
-                    <span className="text-xs text-white/50 uppercase">Humidity</span>
-                    <span className="text-lg font-bold">{selectedCity.current.humidity}%</span>
-                  </div>
-                  <div className="bg-white/5 p-4 rounded-2xl border border-white/10 flex flex-col items-center text-center">
-                    <Wind className="w-5 h-5 text-blue-400 mb-2" />
-                    <span className="text-xs text-white/50 uppercase">Wind</span>
-                    <span className="text-lg font-bold">{Math.round(selectedCity.current.wind_kph)} km/h</span>
-                  </div>
-                  <div className="bg-white/5 p-4 rounded-2xl border border-white/10 flex flex-col items-center text-center">
-                    <Sun className="w-5 h-5 text-yellow-400 mb-2" />
-                    <span className="text-xs text-white/50 uppercase">UV Index</span>
-                    <span className="text-lg font-bold">{selectedCity.current.uv}</span>
-                  </div>
-                </div>
-                
-                <div className="mt-6 p-4 bg-blue-500/20 rounded-2xl border border-blue-500/30 text-center">
-                  <p className="text-sm italic text-blue-100">"{selectedCity.current.condition.text}"</p>
-                </div>
-              </div>
-            </div>
-          )}
-
+        <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-6 md:p-10 border border-white/20 shadow-2xl">
           <form onSubmit={handlePlanJourney} className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end mb-12">
             <div className="space-y-2">
               <label className="text-sm font-medium text-blue-200 ml-1">Starting Point</label>
@@ -176,7 +130,7 @@ export default function RoutePlanner() {
                               </span>
                             )}
                           </div>
-                          <h4 className="text-xl font-bold">{city.location.name || 'Unknown Location'}</h4>
+                          <h4 className="text-xl font-bold">{city.location.name}</h4>
                         </div>
                         <div className="text-right">
                           <span className="text-2xl font-black">{Math.round(city.current.temp_c)}°C</span>

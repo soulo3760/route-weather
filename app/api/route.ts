@@ -21,74 +21,134 @@ export async function GET(request: NextRequest) {
     if (!endRes.ok) throw new Error(`Could not find destination city: ${endCity}`);
     const endData = await endRes.json();
 
-    // 2. Request REAL ROAD ROUTE from OpenRouteService
-    const orsUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${orsKey}&start=${startData.coord.lon},${startData.coord.lat}&end=${endData.coord.lon},${endData.coord.lat}`;
-    const routeRes = await fetch(orsUrl);
-    
-    if (!routeRes.ok) {
-      throw new Error(`Routing error: ${routeRes.status}`);
-    }
-    const routeData = await routeRes.json();
-    
-    // The geometry is a line string of coordinates
-    const coordinates = routeData.features[0].geometry.coordinates;
-    const totalPoints = coordinates.length;
+    const startLat = startData.coord.lat;
+    const startLon = startData.coord.lon;
+    const endLat = endData.coord.lat;
+    const endLon = endData.coord.lon;
 
-    // 3. Sample 3 waypoints along the ACTUAL road path (25%, 50%, 75%)
-    const samples = [0.25, 0.5, 0.75].map(ratio => {
-      const index = Math.floor(totalPoints * ratio);
-      const [lon, lat] = coordinates[index];
-      return { lat, lon };
-    });
+    let finalRoute = [];
 
-    // 4. Fetch weather for these specific road points
-    const waypointWeather = await Promise.all(
-      samples.map(async (pt) => {
-        const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${pt.lat}&lon=${pt.lon}&appid=${weatherKey}&units=metric`);
-        const data = await res.json();
-        return {
-          location: { name: data.name || 'Waypoint', region: data.sys?.country || 'Unknown', country: data.sys?.country || 'Unknown' },
-          coord: { lat: pt.lat, lon: pt.lon },
-          current: {
-            temp_c: data.main.temp,
-            condition: { text: data.weather[0].description, icon: data.weather[0].icon },
-            wind_kph: data.wind.speed * 3.6,
-            humidity: data.main.humidity,
-            uv: 0,
-            feelslike_c: data.main.feels_like,
+    try {
+      // 2. Attempt REAL ROAD ROUTE from OpenRouteService
+      const orsUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${orsKey}&start=${startLon},${startLat}&end=${endLon},${endLat}`;
+      const routeRes = await fetch(orsUrl);
+      
+      if (routeRes.ok) {
+        const routeData = await routeRes.json();
+        const coordinates = routeData.features[0].geometry.coordinates;
+        const totalPoints = coordinates.length;
+
+        const samplePoints = [0.2, 0.4, 0.6, 0.8];
+        const waypointsData = [];
+
+        for (const ratio of samplePoints) {
+          const index = Math.floor(totalPoints * ratio);
+          const [lon, lat] = coordinates[index];
+          
+          const wRes = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${weatherKey}&units=metric`);
+          if (wRes.ok) {
+            const wData = await wRes.json();
+            waypointsData.push({
+              location: { name: wData.name || 'Waypoint', region: wData.sys?.country || 'Unknown', country: wData.sys?.country || 'Unknown' },
+              coord: { lat: wData.coord.lat, lon: wData.coord.lon },
+              current: {
+                temp_c: wData.main.temp,
+                condition: { text: wData.weather[0].description, icon: wData.weather[0].icon },
+                wind_kph: wData.wind.speed * 3.6,
+                humidity: wData.main.humidity,
+                uv: 0,
+                feelslike_c: wData.main.feels_like,
+              }
+            });
           }
-        };
-      })
-    );
-
-    // Construct final result: [Start, Waypoint1, Waypoint2, Waypoint3, End]
-    const finalRoute = [
-      {
-        location: { name: startData.name, region: startData.sys.country, country: startData.sys.country },
-        coord: { lat: startData.coord.lat, lon: startData.coord.lon },
-        current: {
-          temp_c: startData.main.temp,
-          condition: { text: startData.weather[0].description, icon: startData.weather[0].icon },
-          wind_kph: startData.wind.speed * 3.6,
-          humidity: startData.main.humidity,
-          uv: 0,
-          feelslike_c: startData.main.feels_like,
         }
-      },
-      ...waypointWeather,
-      {
-        location: { name: endData.name, region: endData.sys.country, country: endData.sys.country },
-        coord: { lat: endData.coord.lat, lon: endData.coord.lon },
-        current: {
-          temp_c: endData.main.temp,
-          condition: { text: endData.weather[0].description, icon: endData.weather[0].icon },
-          wind_kph: endData.wind.speed * 3.6,
-          humidity: endData.main.humidity,
-          uv: 0,
-          feelslike_c: endData.main.feels_like,
+
+        finalRoute = [
+          {
+            location: { name: startData.name, region: startData.sys.country, country: startData.sys.country },
+            coord: { lat: startLat, lon: startLon },
+            current: {
+              temp_c: startData.main.temp,
+              condition: { text: startData.weather[0].description, icon: startData.weather[0].icon },
+              wind_kph: startData.wind.speed * 3.6,
+              humidity: startData.main.humidity,
+              uv: 0,
+              feelslike_c: startData.main.feels_like,
+            }
+          },
+          ...waypointsData,
+          {
+            location: { name: endData.name, region: endData.sys.country, country: endData.sys.country },
+            coord: { lat: endLat, lon: endLon },
+            current: {
+              temp_c: endData.main.temp,
+              condition: { text: endData.weather[0].description, icon: endData.weather[0].icon },
+              wind_kph: endData.wind.speed * 3.6,
+              humidity: endData.main.humidity,
+              uv: 0,
+              feelslike_c: endData.main.feels_like,
+            }
+          }
+        ];
+      } else {
+        throw new Error("Road routing unavailable");
+      }
+    } catch (routingError) {
+      console.log("Falling back to Smart Approximation:", routingError.message);
+      
+      // FALLBACK: Smart Approximation (Linear Interpolation)
+      const waypoints: any[] = [];
+      for (let i = 1; i <= 3; i++) {
+        const ratio = i / 4;
+        const lat = startLat + (endLat - startLat) * ratio;
+        const lon = startLon + (endLon - startLon) * ratio;
+        
+        const wRes = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${weatherKey}&units=metric`);
+        if (wRes.ok) {
+          const wData = await wRes.json();
+          waypoints.push({
+            location: { name: wData.name || 'Waypoint', region: wData.sys?.country || 'Unknown', country: wData.sys?.country || 'Unknown' },
+            coord: { lat: wData.coord.lat, lon: wData.coord.lon },
+            current: {
+              temp_c: wData.main.temp,
+              condition: { text: wData.weather[0].description, icon: wData.weather[0].icon },
+              wind_kph: wData.wind.speed * 3.6,
+              humidity: wData.main.humidity,
+              uv: 0,
+              feelslike_c: wData.main.feels_like,
+            }
+          });
         }
       }
-    ];
+
+      finalRoute = [
+        {
+          location: { name: startData.name, region: startData.sys.country, country: startData.sys.country },
+          coord: { lat: startLat, lon: startLon },
+          current: {
+            temp_c: startData.main.temp,
+            condition: { text: startData.weather[0].description, icon: startData.//weather[0].icon },
+            wind_kph: startData.wind.speed * 3.6,
+            humidity: startData.main.humidity,
+            uv: 0,
+            feelslike_c: startData.main.feels_like,
+          }
+        },
+        ...waypoints,
+        {
+          location: { name: endData.name, region: endData.sys.country, country: endData.sys.country },
+          coord: { lat: endLat, lon: endLon },
+          current: {
+            temp_c: endData.main.temp,
+            condition: { text: endData.weather[0].description, icon: endData.weather[0].icon },
+            wind_kph: endData.wind.speed * 3.6,
+            humidity: endData.main.humidity,
+            uv: 0,
+            feelslike_c: endData.//main.feels_like,
+          }
+        }
+      ];
+    }
 
     return NextResponse.json(finalRoute);
   } catch (error: any) {
