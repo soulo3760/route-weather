@@ -14,17 +14,6 @@ interface WeatherData {
   };
 }
 
-// Simulated Route Database - keys are lowercase for easy matching
-const ROUTE_DATABASE: Record<string, string[]> = {
-  "nakuru-mombasa": ["Naivasha", "Nairobi", "Voi"],
-  "nairobi-mombasa": ["Mtito Andei", "Voi"],
-  "eldoret-nairobi": ["Nakuru", "Naivasha"],
-  "kisumu-nairobi": ["Nakuru", "Naivasha"],
-  "nakuru-nairobi": ["Naivasha"],
-  "mombasa-nakuru": ["Voi", "Nairobi", "Naivasha"],
-  "mombasa-nairobi": ["Voi", "Mtito Andei"],
-};
-
 export default function RoutePlanner() {
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
@@ -32,9 +21,13 @@ export default function RoutePlanner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchWeather = async (city: string) => {
-    const res = await fetch(`/api/weather?q=${city}`);
-    if (!res.ok) throw new Error(`Could not find ${city}`);
+  const fetchWeather = async (query: string | { lat: number; lon: number }) => {
+    const url = typeof query === 'string' 
+      ? `/api/weather?q=${query}` 
+      : `/api/weather?lat=${query.lat}&lon=${query.lon}`;
+    
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Could not fetch weather for ${typeof query === 'string' ? query : 'coordinates'}`);
     return res.json();
   };
 
@@ -51,18 +44,38 @@ export default function RoutePlanner() {
       const startCity = origin.trim();
       const endCity = destination.trim();
 
-      // Normalize keys to lowercase to ensure matching works regardless of typing
-      const routeKey = `${startCity.toLowerCase()}-${endCity.toLowerCase()}`;
-      const waypoints = ROUTE_DATABASE[routeKey] || [];
+      // 1. Get coordinates for start and end
+      const startRes = await fetch(`/api/weather?q=${startCity}`);
+      if (!startRes.ok) throw new Error(`Could not find ${startCity}`);
+      const startData = await startRes.json();
 
-      // Create a full list of cities to fetch: [Start, ...Midpoints, End]
-      const allCities = [startCity, ...waypoints, endCity];
+      const endRes = await fetch(`/api/weather?q=${endCity}`);
+      if (!endRes.ok) throw new Error(`Could not find ${endCity}`);
+      const endData = await endRes.json();
 
-      // Fetch weather for all cities in parallel
-      const results = await Promise.all(
-        allCities.map(city => fetchWeather(city))
-      );
+      const startLat = startData.coord.lat;
+      const startLon = startData.coord.lon;
+      const endLat = endData.coord.lat;
+      const endLon = endData.coord.lon;
 
+      // 2. "Smart Sampling": Create 3 waypoints along the route (25%, 50%, 75%)
+      const waypoints: { lat: number; lon: number }[] = [];
+      for (let i = 1; i <= 3; i++) {
+        const ratio = i / 4;
+        waypoints.push({
+          lat: startLat + (endLat - startLat) * ratio,
+          lon: startLon + (endLon - startLon) * ratio,
+        });
+      }
+
+      // 3. Fetch weather for all points: [Start, Waypoint1, Waypoint2, Waypoint3, End]
+      const allWeatherRequests = [
+        Promise.resolve(startData),
+        ...waypoints.map(wp => fetchWeather(wp)),
+        Promise.resolve(endData)
+      ];
+
+      const results = await Promise.all(allWeatherRequests);
       setRouteData(results);
     } catch (err: any) {
       setError(err.message);
@@ -73,19 +86,19 @@ export default function RoutePlanner() {
 
   const getJourneyAdvice = () => {
     if (routeData.length < 2) return null;
-
+    
     const start = routeData[0];
     const end = routeData[routeData.length - 1];
     const tempDiff = end.current.temp_c - start.current.temp_c;
-
-    const isRainy = routeData.some(city =>
+    
+    const isRainy = routeData.some(city => 
       city.current.condition.text.toLowerCase().includes('rain')
     );
 
     let advice = "";
     if (tempDiff > 5) advice = "Temperature rises as you travel. Pack light!";
     else if (tempDiff < -5) advice = "It gets colder along the route. Bring a jacket!";
-    else advice, advice = "Stable temperature across your journey.";
+    else advice = "Stable temperature across your journey.";
 
     if (isRainy) advice += " ⚠️ Rain expected on this route, bring an umbrella!";
 
@@ -97,7 +110,7 @@ export default function RoutePlanner() {
       <div className="max-w-4xl mx-auto">
         <header className="text-center mb-12">
           <h1 className="text-4xl font-black mb-2 tracking-tight">RouteWeather</h1>
-          <p className="text-blue-200/70">Plan your journey with waypoint intelligence</p>
+          <p className="text-blue-200/70">Plan your journey with multi-point intelligence</p>
         </header>
 
         <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-6 md:p-10 border border-white/20 shadow-2xl">
@@ -106,7 +119,7 @@ export default function RoutePlanner() {
               <label className="text-sm font-medium text-blue-200 ml-1">Starting Point</label>
               <div className="relative">
                 <MapPin className="absolute left-3 top-3 text-blue-300 w-5 h-5" />
-                <input
+                <input 
                   type="text"
                   value={origin}
                   onChange={(e) => setOrigin(e.target.value)}
@@ -124,7 +137,7 @@ export default function RoutePlanner() {
               <label className="text-sm font-medium text-blue-200 ml-1">Destination</label>
               <div className="relative">
                 <MapPin className="absolute left-3 top-3 text-red-300 w-5 h-5" />
-                <input
+                <input 
                   type="text"
                   value={destination}
                   onChange={(e) => setDestination(e.target.value)}
@@ -135,8 +148,8 @@ export default function RoutePlanner() {
             </div>
 
             <div className="md:col-span-3 flex justify-center mt-4">
-              <button
-                type="submit"
+              <button 
+                type="submit" 
                 disabled={loading}
                 className="px-8 py-4 bg-blue-500 hover:bg-blue-400 rounded-2xl font-bold text-lg transition-all flex items-center gap-2 shadow-lg disabled:opacity-50"
               >
@@ -162,7 +175,7 @@ export default function RoutePlanner() {
                   const isCoffeePoint = isMid && idx === Math.floor(routeData.length / 2);
 
                   return (
-                    <div key={city.location.name} className="relative">
+                    <div key={city.location.name + idx} className="relative">
                       {/* The Dot on the Timeline */}
                       <div className={`absolute -left-[25px] top-2 w-4 h-4 rounded-full border-2 border-slate-900 ${isStart ? 'bg-blue-400' : isEnd ? 'bg-red-400' : 'bg-white'}`} />
 
